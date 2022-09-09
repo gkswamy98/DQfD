@@ -187,7 +187,7 @@ class WarpFrame(gym.ObservationWrapper):
 def make_atari(env_id, skip = 4):
     env = gym.make(env_id)
     assert 'NoFrameskip' in env.spec.id
-    env = NoopResetEnv(env, noop_max=30)
+    #env = NoopResetEnv(env, noop_max=30)
     env = MaxAndSkipEnv(env, skip = skip)
     return env
 

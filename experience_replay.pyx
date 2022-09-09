@@ -404,6 +404,8 @@ cdef class PrioritizedExperienceReplay:
         # get current total weight and size of the replay memory
         cdef float current_size = self.max_frame_num if self._is_full else self._current_index
         cdef float current_total_weight = self._priority_tree.get_total_weight()
+        if current_total_weight < 0.0000001:
+            current_total_weight = 0.0000001
 
         # get current beta
         cdef float current_beta = min(self.is_max_coeff, self.is_min_coeff + self._sample_counter * (self.is_max_coeff - self.is_min_coeff) / self.is_steps)

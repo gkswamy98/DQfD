@@ -23,6 +23,22 @@ from atari_preprocessing import atari_montezuma_processor, ProcessedAtariEnv
 from openai_baseline_wrappers import make_atari, wrap_deepmind
 from load_data import LoadAtariHeadData
 
+import random
+
+
+import argparse
+    
+parser = argparse.ArgumentParser()
+parser.add_argument('--seed', default=12, type=int) 
+parser.add_argument('--offline_buffer_path', default="offline_data/easy", type=str)
+parser.add_argument('--save_path', default="experiments/montezuma_standard_experiment/", type=str)
+
+args = parser.parse_args()
+
+np.random.seed(args.seed)
+random.seed(args.seed)
+tf.random.set_seed(args.seed)
+
 
 #create environment
 frame_processor = atari_montezuma_processor
@@ -31,6 +47,8 @@ game_name = 'montezuma_revenge'
 env = make_atari(game_id)
 env = wrap_deepmind(env)
 env = ProcessedAtariEnv(env, frame_processor, reward_processor = lambda x: np.sign(x) * np.log(1 + np.abs(x)))
+
+env.seed(args.seed)
 
 # additional env specific parameters
 frame_shape = env.reset().shape
@@ -82,13 +100,13 @@ target_interval = 10000
 warmup_steps = 50000
 pretrain_steps = 500000
 learning_interval = 4
-num_steps = 12000000
+num_steps = 15000000
 num_episodes = 10000
 max_steps_per_episode = 18000
 output_freq = 1000
 save_freq = 500
 store_memory = True
-save_path = "experiments/montezuma_standard_experiment/"
+save_path = args.save_path
 
 
 
@@ -103,17 +121,48 @@ memory = PrioritizedExperienceReplay(frame_shape = frame_shape,
                                      restore_path = memory_restore_path)
 
 # expert memory
-data_loader = LoadAtariHeadData(game_name = game_name, frame_processor = frame_processor)
-expert_memory = data_loader.demonstrations_to_per(max_frame_num = max_frame_num,
-                                                  num_stacked_frames = num_stacked_frames,
-                                                  frame_shape = frame_shape,
-                                                  batch_size = batch_size,
-                                                  prio_coeff = prio_coeff,
-                                                  is_schedule = is_schedule,
-                                                  epsilon = expert_epsilon,
-                                                  recompute_demonstrations = True,
-                                                  only_highscore = False,
-                                                  frame_skip = frame_skip)
+# data_loader = LoadAtariHeadData(game_name = game_name, frame_processor = frame_processor)
+# expert_memory = data_loader.demonstrations_to_per(max_frame_num = max_frame_num,
+#                                                   num_stacked_frames = num_stacked_frames,
+#                                                   frame_shape = frame_shape,
+#                                                   batch_size = batch_size,
+#                                                   prio_coeff = prio_coeff,
+#                                                   is_schedule = is_schedule,
+#                                                   epsilon = expert_epsilon,
+#                                                   recompute_demonstrations = True,
+#                                                   only_highscore = False,
+#                                                   frame_skip = frame_skip)
+# expert_memory = PrioritizedExperienceReplay(frame_shape = frame_shape,
+#                                      max_frame_num = max_frame_num,
+#                                      num_stacked_frames = num_stacked_frames,
+#                                      batch_size = batch_size,
+#                                      prio_coeff = prio_coeff,
+#                                      is_schedule = is_schedule,
+#                                      epsilon = replay_epsilon,
+#                                      restore_path = "AtariHEADArchives")
+
+buffer_path = args.offline_buffer_path
+
+states_data = np.load("{}/states.npy".format(buffer_path))
+actions_data = np.load("{}/actions.npy".format(buffer_path))
+rewards_data = np.load("{}/rewards.npy".format(buffer_path))
+dones_data =  np.load("{}/dones.npy".format(buffer_path)).astype(np.uint8)
+
+priorities = np.ones(actions_data.shape[0], dtype = np.single)
+
+expert_memory = PrioritizedExperienceReplay(
+                                    max_frame_num = max_frame_num,
+                                    num_stacked_frames = 4,
+                                    batch_size = batch_size,
+                                    frames = states_data,
+                                    actions = actions_data,
+                                    rewards = rewards_data,
+                                    priorities = priorities, 
+                                    episode_endings = dones_data,
+                                    prio_coeff = prio_coeff,
+                                    is_schedule = is_schedule,
+                                    epsilon = expert_epsilon)
+
 
 # create policy network
 policy_network = DeepQNetwork(in_shape = (num_stacked_frames, *frame_shape),

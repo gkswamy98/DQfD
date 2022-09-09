@@ -88,8 +88,8 @@ class DeepQNetwork:
                  optimizer = Adam,
                  lr_schedule = [[0.00025, 0.00005, 500000],
                                 [0.00005, 0.00001, 1000000]],              
-                 one_step_loss_fn = Huber(reduction=tf.keras.losses.Reduction.NONE), #lambda x, y: tf.math.square(x - y),
-                 n_step_loss_fn = Huber(reduction=tf.keras.losses.Reduction.NONE), #lambda x, y: tf.math.square(x - y),
+                 one_step_loss_fn = lambda x, y: tf.math.square(x - y),#Huber(reduction=tf.keras.losses.Reduction.NONE), 
+                 n_step_loss_fn = lambda x, y: tf.math.square(x - y), #Huber(reduction=tf.keras.losses.Reduction.NONE), #lambda x, y: tf.math.square(x - y),
                  expert_loss_fn = lambda x, y: tf.math.abs(x - y),
                  one_step_weight = 1.0,
                  n_step_weight = 0.0,
@@ -202,7 +202,7 @@ class DeepQNetwork:
         return(tf.math.argmax(self.predict(states), axis = 1))
     
     @tf.function
-    def train(self, states, chosen_actions, target_action_values, n_step_target_action_values = None, expert = False, batch_weights = 1):
+    def train(self, states, chosen_actions, target_action_values, n_step_target_action_values = None, batch_weights = 1):
         """Perform a network parameter update for the specified 
            mini-batch of states, chosen actions and target values"""
         self._update_counter += 1
@@ -219,10 +219,37 @@ class DeepQNetwork:
             if n_step_target_action_values is not None:
                 losses += self.n_step_weight * self.n_step_loss_fn(chosen_action_values, n_step_target_action_values)
 
-            # large margin classification loss
-            if expert:
-                large_margin_targets = tf.reduce_max(predictions + tf.one_hot(chosen_actions, self.num_actions, on_value = 0., off_value = self.large_margin_coeff, dtype = 'float32'), axis = 1)
-                losses += self.expert_weight * self.expert_loss_fn(chosen_action_values, large_margin_targets)
+            # L2-regularization loss
+            if self.l2_weight > 0:
+                losses += self.l2_weight * tf.reduce_sum([tf.reduce_sum(tf.square(layer_weights)) for layer_weights in self.model.trainable_weights])
+            
+            
+            mean_loss = tf.reduce_mean(losses * batch_weights)
+            
+        gradients = tape.gradient(mean_loss, self.model.trainable_weights)
+        self.optimizer.apply_gradients(zip(gradients, self.model.trainable_weights))
+        return(mean_loss, losses)
+
+    @tf.function
+    def train_expert(self, states, chosen_actions, target_action_values, n_step_target_action_values = None, batch_weights = 1):
+        """Perform a network parameter update for the specified 
+           mini-batch of states, chosen actions and target values"""
+        self._update_counter += 1
+        self._update_lr()
+        with tf.GradientTape() as tape:
+            tape.watch(self.model.trainable_weights)
+            predictions = self.model(states, training = False)
+            chosen_action_values = tf.reduce_sum(tf.multiply(predictions, tf.one_hot(chosen_actions, self.num_actions, dtype = 'float32')), axis = 1)
+
+            # one-step temporal difference loss
+            losses = self.one_step_weight * self.one_step_loss_fn(chosen_action_values, target_action_values)
+            
+            # n-step temporal difference loss
+            if n_step_target_action_values is not None:
+                losses += self.n_step_weight * self.n_step_loss_fn(chosen_action_values, n_step_target_action_values)
+
+            large_margin_targets = tf.reduce_max(predictions + tf.one_hot(chosen_actions, self.num_actions, on_value = 0., off_value = self.large_margin_coeff, dtype = 'float32'), axis = 1)
+            losses += self.expert_weight * self.expert_loss_fn(chosen_action_values, large_margin_targets)
 
             # L2-regularization loss
             if self.l2_weight > 0:
@@ -234,3 +261,4 @@ class DeepQNetwork:
         gradients = tape.gradient(mean_loss, self.model.trainable_weights)
         self.optimizer.apply_gradients(zip(gradients, self.model.trainable_weights))
         return(mean_loss, losses)
+

@@ -317,9 +317,9 @@ class BaseQAgent:
         new_frame, _, _, _ = self.env.step(0)
         
         t = 0
-        while not self.env.was_real_done and t<max_steps_per_episode:
-            if done:
-                self.env.reset()
+        while not done and t<max_steps_per_episode:
+            #if done:
+            #    self.env.reset()
             if record:
                 frames.append(self.env._unprocessed_frame)
 
@@ -433,7 +433,7 @@ class DQNAgent(BaseQAgent):
     def _choose_memory(self):
         memory_weight = self.memory._priority_tree.get_total_weight()
         expert_weight = self.expert_memory._priority_tree.get_total_weight()
-        return(np.random.binomial(size = 1, n = 1, p = expert_weight/(expert_weight + memory_weight)) == 1)
+        return(np.random.binomial(size = 1, n = 1, p = expert_weight/(expert_weight + memory_weight))[0] == 1)
         
     
     def _batch_update(self, pretrain = False):
@@ -447,12 +447,19 @@ class DQNAgent(BaseQAgent):
         self._get_mini_batch(expert)
         # compute target values
         target_action_values, n_step_target_action_values = self._get_target_action_values()
+        #print(expert)
         # train the policy network using the target values and obtain the loss
-        mean_loss, losses = self.policy_network.train(self.state_1_batch, self.action_batch, target_action_values, n_step_target_action_values, expert, self.batch_weights)
+        if expert:
+            mean_loss, losses = self.policy_network.train_expert(self.state_1_batch, self.action_batch, target_action_values, 
+                                    n_step_target_action_values=n_step_target_action_values, batch_weights=self.batch_weights)
+        else:
+            mean_loss, losses = self.policy_network.train(self.state_1_batch, self.action_batch, target_action_values, 
+                                    n_step_target_action_values=n_step_target_action_values, batch_weights=self.batch_weights)
         self._losses.append(mean_loss)
         # update priorities according to losses
         if self.prioritized_replay:
             if expert:
+                #print(losses.numpy())
                 self.expert_memory.update_mini_batch_priorities(losses.numpy())
             else:
                 self.memory.update_mini_batch_priorities(losses.numpy())

@@ -3,6 +3,7 @@ import numpy as np
 from numpy import absolute
 import gym
 
+from PIL import Image
 
 
 def atari_enduro_processor(raw_frame):
@@ -14,12 +15,16 @@ def atari_enduro_processor(raw_frame):
     return(resized_frame[0:84])
 
 def atari_montezuma_processor(raw_frame):
-    # convert input frame to gray scale
-    gray_frame = cvtColor(raw_frame, COLOR_BGR2GRAY)
-    # resize frame
-    resized_frame = resize(gray_frame, (84, 105), interpolation=INTER_AREA)
-    # return cropped frame
-    return(resized_frame[15:99])
+    # # convert input frame to gray scale
+    # gray_frame = cvtColor(raw_frame, COLOR_BGR2GRAY)
+    # # resize frame
+    # resized_frame = resize(gray_frame, (84, 84), interpolation=INTER_AREA)
+    # # return cropped frame
+    # return(resized_frame[15:99])
+
+    X = np.array(Image.fromarray(raw_frame).convert('L')).astype('uint8')
+    x = resize(X, (84,84))
+    return x
 
 def atari_pong_processor(raw_frame):
     # convert input frame to gray scale
@@ -108,6 +113,8 @@ class ProcessedAtariEnv(gym.Wrapper):
         self._unprocessed_reward = 0.
         self._unprocessed_score = 0.
         self._unprocessed_frame = self.env.reset()
+
+        self.previous_action = 0
     
   
     def true_reset(self):
@@ -116,10 +123,15 @@ class ProcessedAtariEnv(gym.Wrapper):
     
     def reset(self):
         """Reset the environment and return the processed frame"""
+        self.previous_action = 0
         return(self.frame_processor(self.env.reset()))
     
     def step(self, action):
         """Perform one step in the processed environment"""
+        if np.random.rand() <= 0.25:
+            action = self.previous_action
+        self.previous_action = action
+        
         action = self.action_processor(action)
         frame, reward, done, info = self.env.step(action)
         
