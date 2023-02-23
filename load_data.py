@@ -41,7 +41,8 @@ class LoadAtariHeadData:
                  archive_dir = "AtariHEADArchives/",
                  atari_head_url = "https://zenodo.org/record/3451402/files/",
                  frame_processor = atari_montezuma_processor,
-                 reward_processor = lambda x: np.sign(x)):
+                 reward_processor = lambda x: np.sign(x),
+                 use_sqil_rewards=False):
         
         self.game_name = game_name
         self.archive_dir = archive_dir
@@ -51,6 +52,9 @@ class LoadAtariHeadData:
         self._zipfile_url = atari_head_url + self.game_name + ".zip"
         self._act_rew_df = None
         self._png_name_df = None
+        self.use_sqil_rewards = use_sqil_rewards
+        if self.use_sqil_rewards:
+            print("Using SQIL Rewards")
 
         
     def _check_archive_dir(self):
@@ -310,6 +314,13 @@ class LoadAtariHeadData:
         
         # get demonstrations
         frames, actions, rewards, episode_endings = self.get_demonstrations(frame_shape, recompute_demonstrations, only_highscore, exclude_highscore, frame_skip)
+        # just saves re-computing things
+        # frames, actions, rewards, episode_endings = self._load_demonstrations()
+
+
+        if self.use_sqil_rewards:
+            print("Setting expert rewards to 1")
+            rewards = np.ones_like(rewards)
         
         # set all priorities of demonstrations to 1
         priorities = np.ones(actions.shape[0], dtype = priority_dtype)
@@ -330,3 +341,68 @@ class LoadAtariHeadData:
                                                     epsilon = epsilon)
         return(replay_memory)
         
+class LoadAtariRNDData:
+    def __init__(self, game_name = 'montezuma_revenge', 
+                 archive_dir = "AtariHEADArchives/",
+                 atari_head_url = "https://zenodo.org/record/3451402/files/",
+                 frame_processor = atari_montezuma_processor,
+                 reward_processor = lambda x: np.sign(x),
+                 use_sqil_rewards=False):
+
+        self.game_name = game_name
+        self.archive_dir = archive_dir
+        self.frame_processor = frame_processor
+        self.reward_processor = reward_processor
+        self._zipfile_loc = self.archive_dir + self.game_name + ".zip"
+        self._zipfile_url = atari_head_url + self.game_name + ".zip"
+        self._act_rew_df = None
+        self._png_name_df = None
+        self.use_sqil_rewards = use_sqil_rewards
+        if self.use_sqil_rewards:
+            print("Using SQIL Rewards from LoadAtariRNDData")
+
+    def _load_demonstrations(self):
+        loaded_zip = np.load("mz_demos_r.npz", allow_pickle=True)
+        frames = loaded_zip["s"].reshape([-1, 4, 84, 84])
+        actions = loaded_zip["a"].reshape([-1])
+        rewards = self.reward_processor(loaded_zip["r"].reshape([-1]))
+        episode_endings = loaded_zip["d"].reshape([-1])
+        return(frames, actions, rewards, episode_endings)
+
+    def demonstrations_to_per(self, 
+                              max_frame_num = 2**20,
+                              num_stacked_frames = 4,
+                              frame_shape = (84, 84),
+                              priority_dtype = np.single,
+                              batch_size = 32,
+                              prio_coeff = 0.0,
+                              is_schedule = [0.4, 1.0, 5000000],
+                              epsilon = 0.0001,
+                              recompute_demonstrations = False,
+                              only_highscore = False,
+                              exclude_highscore = True,
+                              frame_skip = 4):
+        """Load demonstration data and return an instance of PrioritizedExperienceReplay,
+        initialized with the demonstration data."""
+
+        # get demonstrations
+        frames, actions, rewards, episode_endings = self._load_demonstrations()
+
+        # set all priorities of demonstrations to 1
+        priorities = np.ones(actions.shape[0], dtype = priority_dtype)
+
+        # iniatialize PrioritizedExperienceReplay object with the demonstrations
+        replay_memory = PrioritizedExperienceReplay(max_frame_num = max_frame_num, 
+                                                    num_stacked_frames = num_stacked_frames,
+                                                    frame_shape = frame_shape,
+                                                    frames = (frames[:, 3].copy(order='C')*255.0).astype(np.uint8),
+                                                    actions = actions.astype(np.int32),
+                                                    rewards = rewards.astype(np.float32),
+                                                    priorities = priorities, 
+                                                    episode_endings = episode_endings,
+                                                    priority_dtype = priority_dtype, 
+                                                    batch_size = batch_size,
+                                                    prio_coeff = prio_coeff,
+                                                    is_schedule = is_schedule,
+                                                    epsilon = epsilon)
+        return(replay_memory)

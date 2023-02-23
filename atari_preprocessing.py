@@ -4,6 +4,7 @@ from numpy import absolute
 import gym
 
 from PIL import Image
+import random
 
 
 def atari_enduro_processor(raw_frame):
@@ -97,7 +98,11 @@ class ProcessedAtariEnv(gym.Wrapper):
                  action_processor = lambda x: x, 
                  reward_processor = lambda x: x,
                  neg_reward_terminal = False,
-                 neg_reward_for_life_loss = False):
+                 neg_reward_for_life_loss = False,
+                 ale_states = None,
+                 expert_reset_prob = 0.0,
+                 shaky_hands=0.0,
+                 use_sqil_rewards=False):
         gym.Wrapper.__init__(self, env)
         
         # custom environment processors
@@ -108,17 +113,35 @@ class ProcessedAtariEnv(gym.Wrapper):
         # reward options
         self.neg_reward_terminal = neg_reward_terminal
         self.neg_reward_for_life_loss = neg_reward_for_life_loss
+
+        self.ale_states = ale_states
+        self.expert_reset_prob = expert_reset_prob
+        if self.expert_reset_prob > 0:
+            assert self.ale_states is not None, "Must provide ale_states if expert_reset_prob > 0"
+        self.shaky_hands = shaky_hands
+        print("Expert Reset Prob", self.expert_reset_prob, "Shaky Hands", self.shaky_hands)
         
         # internal variables
         self._unprocessed_reward = 0.
         self._unprocessed_score = 0.
         self._unprocessed_frame = self.env.reset()
 
+        self.use_sqil_rewards = use_sqil_rewards
+        
+        if self.use_sqil_rewards:
+            print("SQIL: setting learner rewards to 0")
+            self.reward_processor = lambda x: 0.0
+
         self.previous_action = 0
     
   
-    def true_reset(self):
+    def true_reset(self, validation=False):
         """Perform a true reset on OpenAI's EpisodicLifeEnv"""
+        if not validation and random.random() < self.expert_reset_prob:
+            random_expert_state = self.ale_states[np.random.randint(0, len(self.ale_states))]
+            self.unwrapped.restore_state(random_expert_state)
+            s, _, _, _ = self.unwrapped.step(self.unwrapped.action_space.sample())
+            return (s)
         return(self.unwrapped.reset())
     
     def reset(self):
@@ -131,6 +154,8 @@ class ProcessedAtariEnv(gym.Wrapper):
         if np.random.rand() <= 0.25:
             action = self.previous_action
         self.previous_action = action
+        if random.random() < self.shaky_hands:
+            action = self.unwrapped.action_space.sample()
         
         action = self.action_processor(action)
         frame, reward, done, info = self.env.step(action)

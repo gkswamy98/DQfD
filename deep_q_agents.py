@@ -10,6 +10,7 @@ argmax = math.argmax
 import time
 import os
 from log_training import QLearningLogger
+import tqdm
 
 class BaseQAgent:
     """
@@ -115,7 +116,7 @@ class BaseQAgent:
     def _start_episode(self, test = False):
         """Start episode with a number of num_stacked_frames no-ops 
         to get the first state of an episode"""
-        self.env.true_reset()
+        self.env.true_reset(validation=test)
         new_frame = self.env.reset()
         if not test:
             self.memory.add_experience(0, 0.0, new_frame, False)
@@ -133,14 +134,14 @@ class BaseQAgent:
     
     def _pretrain(self, pretrain_steps, target_interval):
         """Pretrain the agent on its memory (prefilled with demonstrations)"""
-        for step in range(pretrain_steps):
+        for step in tqdm.tqdm(range(pretrain_steps)):
             self._batch_update(pretrain = True)
             if step % target_interval == 0:
                 self.logger.save_model(self.policy_network.model)
-                print('\nStep:    %i' %(step))
+                # print('\nStep:    %i' %(step))
                 self._update_target_model()
-                print('Validation Score:    %f' %(self.test()[0]))
-                print('\n')
+                # print('Validation Score:    %f' %(self.test()[0]))
+                # print('\n')
     
     
     def train(self,
@@ -310,32 +311,33 @@ class BaseQAgent:
         """
         
         frames = []
-        done = False
         total_reward = 0
-        reward = 0
-        self.env.true_reset()
-        new_frame, _, _, _ = self.env.step(0)
+        n_ep = 5
         
-        t = 0
-        while not done and t<max_steps_per_episode:
-            #if done:
-            #    self.env.reset()
-            if record:
-                frames.append(self.env._unprocessed_frame)
+        for _ in tqdm.tqdm(range(n_ep)):
+            done = False
+            self._start_episode(test=True)
 
-            action = self._make_decision(test_eps = eps)
+            for t in range(max_steps_per_episode):
+                if record:
+                    frames.append(self.env._unprocessed_frame)
 
-            new_frame, reward, done, info = self.env.step(action)
+                action = self._make_decision()
+
+                new_frame, _, done, _ = self.env.step(action)
+            
+                total_reward += self.env._unprocessed_reward
+                
+                # update current state
+                self._current_state[0, :(self.num_stacked_frames-1)] = self._current_state[0, 1:]
+                self._current_state[0, self.num_stacked_frames-1] = new_frame
+                
+                if self.env.was_real_done:
+                    break
+                if done:
+                    self.env.reset()
         
-            total_reward += self.env._unprocessed_reward
-            
-            # update current state
-            self._current_state[0, :(self.num_stacked_frames-1)] = self._current_state[0, 1:]
-            self._current_state[0, self.num_stacked_frames-1] = new_frame
-            
-            t += 1
-           
-        return(total_reward, frames)
+        return(total_reward / n_ep, frames)
                     
                     
                     
@@ -527,7 +529,7 @@ class EpsilonAnnealingAgent(BaseQAgent):
             self.eps_lag = self._step_counter
         max_eps, min_eps, eps_steps = self.eps_schedule[0]
         epsilon = max_eps - min(1, (self._step_counter - self.eps_lag) / (eps_steps - self.eps_lag)) * (max_eps - min_eps)
-        return(epsilon)
+        return epsilon
     
     def _make_decision(self, test_eps = None):
         if test_eps is not None:
