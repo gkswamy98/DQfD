@@ -56,7 +56,7 @@ if args.nrpi:
     ale_states = np.load(ale_states_path, allow_pickle=True).reshape([-1,]) #[:3959]
     episode_starts = np.load(episode_starts_path, allow_pickle=True).reshape([-1,])
 
-    expert_reset_prob = args.expert_reset_prob if args.expert_reset_prob is not None else 0.5
+    expert_reset_prob = args.expert_reset_prob if args.expert_reset_prob is not None else 1.0
 else:
     ale_states = None
     expert_reset_prob = 0.0

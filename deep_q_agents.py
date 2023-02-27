@@ -261,7 +261,7 @@ class BaseQAgent:
                     break
                     
                 if done:
-                    self.env.true_reset(validation=False)
+                    self.env.reset()
                 
                     
             if not self.env.was_real_done:
