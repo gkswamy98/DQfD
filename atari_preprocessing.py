@@ -100,6 +100,7 @@ class ProcessedAtariEnv(gym.Wrapper):
                  neg_reward_terminal = False,
                  neg_reward_for_life_loss = False,
                  ale_states = None,
+                 episode_starts = None,
                  expert_reset_prob = 0.0,
                  shaky_hands=0.0,
                  use_sqil_rewards=False):
@@ -115,6 +116,7 @@ class ProcessedAtariEnv(gym.Wrapper):
         self.neg_reward_for_life_loss = neg_reward_for_life_loss
 
         self.ale_states = ale_states
+        self.episode_starts = episode_starts
         self.expert_reset_prob = expert_reset_prob
         if self.expert_reset_prob > 0:
             assert self.ale_states is not None, "Must provide ale_states if expert_reset_prob > 0"
@@ -133,7 +135,16 @@ class ProcessedAtariEnv(gym.Wrapper):
             self.reward_processor = lambda x: 0.0
 
         self.previous_action = 0
-    
+        self.prog = 1
+
+    def get_ale_idx(self):
+        idx = np.random.choice(range(len(self.episode_starts) - 1))
+        ep_start = self.episode_starts[idx]
+        ep_end = self.episode_starts[idx + 1] - 1
+        ale_idx = int(ep_start + (ep_end - ep_start) * self.prog)
+        ale_idx = max(ale_idx, 0)
+        ale_idx = min(ale_idx, len(self.ale_states))
+        return ale_idx
   
     def true_reset(self, validation=False):
         """Perform a true reset on OpenAI's EpisodicLifeEnv"""
@@ -141,8 +152,9 @@ class ProcessedAtariEnv(gym.Wrapper):
             random_expert_state = self.ale_states[np.random.randint(0, len(self.ale_states))]
             self.unwrapped.restore_state(random_expert_state)
             s, _, _, _ = self.unwrapped.step(self.unwrapped.action_space.sample())
-            return (s)
-        return(self.unwrapped.reset())
+            return (self.frame_processor(s))
+        else:
+            return(self.frame_processor(self.unwrapped.reset()))
     
     def reset(self):
         """Reset the environment and return the processed frame"""

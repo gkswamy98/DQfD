@@ -116,8 +116,8 @@ class BaseQAgent:
     def _start_episode(self, test = False):
         """Start episode with a number of num_stacked_frames no-ops 
         to get the first state of an episode"""
-        self.env.true_reset(validation=test)
-        new_frame = self.env.reset()
+        self.env.reset()
+        new_frame = self.env.true_reset(validation=test)
         if not test:
             self.memory.add_experience(0, 0.0, new_frame, False)
         for i in range(self.num_stacked_frames):
@@ -261,7 +261,7 @@ class BaseQAgent:
                     break
                     
                 if done:
-                    self.env.reset()
+                    self.env.true_reset(validation=False)
                 
                     
             if not self.env.was_real_done:

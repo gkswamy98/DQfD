@@ -51,10 +51,12 @@ use_sqil_rewards = args.use_sqil_rewards
 if args.nrpi:
     print('NRPI: Loading ALE States')
     ale_states_path = "/home/gokul/dev/efficient_irl/HyQ/MRevenge/offline_data/easy/ales.npy"
+    episode_starts_path = "/home/gokul/dev/efficient_irl/HyQ/MRevenge/offline_data/easy/episode_starts.npy"
     # loaded_zip = np.load(ale_states_path, allow_pickle=True)
-    ale_states = np.load(ale_states_path, allow_pickle=True).reshape([-1,])
+    ale_states = np.load(ale_states_path, allow_pickle=True).reshape([-1,]) #[:3959]
+    episode_starts = np.load(episode_starts_path, allow_pickle=True).reshape([-1,])
 
-    expert_reset_prob = args.expert_reset_prob if args.expert_reset_prob is not None else 1.0
+    expert_reset_prob = args.expert_reset_prob if args.expert_reset_prob is not None else 0.5
 else:
     ale_states = None
     expert_reset_prob = 0.0
@@ -72,7 +74,7 @@ game_id = 'MontezumaRevengeNoFrameskip-v4'
 game_name = 'montezuma_revenge'
 env = make_atari(game_id)
 env = wrap_deepmind(env)
-env = ProcessedAtariEnv(env, frame_processor, reward_processor = lambda x: np.sign(x) * np.log(1 + np.abs(x)), ale_states=ale_states, expert_reset_prob=expert_reset_prob, shaky_hands=args.shaky_hands, use_sqil_rewards=use_sqil_rewards)
+env = ProcessedAtariEnv(env, frame_processor, reward_processor = lambda x: np.sign(x) * np.log(1 + np.abs(x)), ale_states=ale_states, episode_starts=episode_starts, expert_reset_prob=expert_reset_prob, shaky_hands=args.shaky_hands, use_sqil_rewards=use_sqil_rewards)
 
 env.seed(args.seed)
 
@@ -132,7 +134,7 @@ max_steps_per_episode = 18000
 output_freq = 1000
 save_freq = 500
 store_memory = True
-save_path = "experiments/montezuma_demo_experiment"
+save_path = "experiments/montezuma_demo_experiment_nrpi"
 
 
 # create replay memory
@@ -215,15 +217,15 @@ elif args.data == "rnd":
                                                   frame_skip = frame_skip)
 elif args.data == "yuda":
     buffer_path = '/home/gokul/dev/efficient_irl/HyQ/MRevenge/offline_data/easy'
-    states_data = np.load("{}/states.npy".format(buffer_path))
-    actions_data = np.load("{}/actions.npy".format(buffer_path))
-    rewards_data = np.load("{}/rewards.npy".format(buffer_path))
+    states_data = np.load("{}/states.npy".format(buffer_path)) #[:3959]
+    actions_data = np.load("{}/actions.npy".format(buffer_path)) #[:3959]
+    rewards_data = np.load("{}/rewards.npy".format(buffer_path)) #[:3959]
 
     if use_sqil_rewards:
         print("SQIL: setting expert rewards to 1")
         rewards_data = np.ones_like(rewards_data)
 
-    dones_data =  np.load("{}/dones.npy".format(buffer_path)).astype(np.uint8)
+    dones_data =  np.load("{}/dones.npy".format(buffer_path)).astype(np.uint8) #[:3959]
     print(dones_data.shape)
 
     priorities = np.ones(actions_data.shape[0], dtype = np.single)
